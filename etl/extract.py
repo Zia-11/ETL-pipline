@@ -1,5 +1,7 @@
 import requests
 import pprint
+import json
+import os
 from datetime import datetime, timedelta, timezone
 
 # получаем список товаров
@@ -7,6 +9,11 @@ products_url = "https://fakestoreapi.com/products"
 resp_products = requests.get(products_url)
 resp_products.raise_for_status()  # если статус не 200 — кинет ошибку
 products = resp_products.json()  # преобразуем в json формат
+
+# сохраняем сырые данные
+with open("data/raw_products.json", "w", encoding="utf-8") as f:
+    json.dump(products, f, ensure_ascii=False, indent=2)
+
 print("Пример товара:")
 pprint.pprint(products[0])  # первый товар
 
@@ -15,6 +22,10 @@ rates_url = "https://open.er-api.com/v6/latest/USD"
 resp_rates = requests.get(rates_url)
 resp_rates.raise_for_status()
 rate_data = resp_rates.json()
+
+# сохраняем сырые данные по курсам
+with open("data/raw_rate.json", "w", encoding="utf-8") as f:
+    json.dump(rate_data, f, ensure_ascii=False, indent=2)
 
 if rate_data.get("result") == "success" and "RUB" in rate_data.get("rates", {}):
     usd_to_rub = rate_data["rates"]["RUB"]
@@ -42,6 +53,10 @@ weather_params = {
 resp_weather = requests.get(weather_url, params=weather_params)
 resp_weather.raise_for_status()
 weather_data = resp_weather.json()
+
+# сохраняем сырые данные по погоде
+with open("data/raw_weather.json", "w", encoding="utf-8") as f:
+    json.dump(weather_data, f, ensure_ascii=False, indent=2)
 
 # фильтруем только последние 24 часа
 times = weather_data.get("hourly", {}).get("time", [])
