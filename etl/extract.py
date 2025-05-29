@@ -22,3 +22,20 @@ if rate_data.get("result") == "success" and "RUB" in rate_data.get("rates", {}):
 else:
     print("\nНе удалось получить курс валют. Ответ API:")
     pprint.pprint(rate_data)
+
+# получаем погоду для Владивостока
+weather_url = "https://api.open-meteo.com/v1/forecast"
+weather_params = {
+    "latitude": 43.1155,
+    "longitude": 131.8855,
+    "hourly": "temperature_2m",
+    "start_date": "2025-05-20",
+    "end_date": "2025-05-21",
+    "timezone": "Asia/Vladivostok"
+}
+resp_weather = requests.get(weather_url, params=weather_params)
+resp_weather.raise_for_status()
+weather_data = resp_weather.json()
+
+temps = weather_data.get("hourly", {}).get("temperature_2m", [])
+print(f"\nПервые 5 значений температуры во Владивостоке: {temps[:5]}")
