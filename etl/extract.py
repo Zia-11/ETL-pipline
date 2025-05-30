@@ -1,7 +1,6 @@
 import requests
 import pprint
 import json
-import os
 from datetime import datetime, timedelta, timezone
 
 # получаем список товаров
@@ -14,25 +13,15 @@ products = resp_products.json()  # преобразуем в json формат
 with open("data/raw_products.json", "w", encoding="utf-8") as f:
     json.dump(products, f, ensure_ascii=False, indent=2)
 
-print("Пример товара:")
-pprint.pprint(products[0])  # первый товар
 
-# получаем курс доллара к рублю
-rates_url = "https://open.er-api.com/v6/latest/USD"
-resp_rates = requests.get(rates_url)
-resp_rates.raise_for_status()
-rate_data = resp_rates.json()
+# получаем официальный курс ЦБ РФ
+resp = requests.get("https://www.cbr-xml-daily.ru/daily_json.js")
+resp.raise_for_status()
+cbr_data = resp.json()
 
-# сохраняем сырые данные по курсам
-with open("data/raw_rate.json", "w", encoding="utf-8") as f:
-    json.dump(rate_data, f, ensure_ascii=False, indent=2)
+with open("data/raw_cbr.json", "w", encoding="utf-8") as f:
+    json.dump(cbr_data, f, ensure_ascii=False, indent=2)
 
-if rate_data.get("result") == "success" and "RUB" in rate_data.get("rates", {}):
-    usd_to_rub = rate_data["rates"]["RUB"]
-    print(f"\nКурс USD → RUB: {usd_to_rub}")
-else:
-    print("\nНе удалось получить курс валют. Ответ API:")
-    pprint.pprint(rate_data)
 
 # получаем погоду для Владивостока за последние 24 часа
 now_utc = datetime.now(timezone.utc)
@@ -69,7 +58,21 @@ for t_str, temp in zip(times, temps):
     if start_dt <= t <= now_vl:
         last_24h.append((t_str, temp))
 
-print(
-    f"\nТемпература во Владивостоке за последние 24 ч (с {start_dt.strftime('%Y-%m-%d %H:%M')} до {now_vl.strftime('%Y-%m-%d %H:%M')}):")
-for t_str, temp in last_24h:
-    print(f"{t_str} → {temp}°C")
+
+# получаем данные по крипте
+url = "https://api.coingecko.com/api/v3/coins/markets"
+params = {
+    "vs_currency": "usd",
+    "order": "market_cap_desc",
+    "per_page": 10,
+    "page": 1,
+    "sparkline": False,
+    "price_change_percentage": "24h"
+}
+resp = requests.get(url, params=params)
+resp.raise_for_status()
+crypto_data = resp.json()
+
+# сохраняем сырые данные в файл
+with open("data/raw_crypto.json", "w", encoding="utf-8") as f:
+    json.dump(crypto_data, f, ensure_ascii=False, indent=2)
