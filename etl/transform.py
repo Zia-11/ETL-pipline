@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 
 
 def transform():
@@ -11,3 +12,23 @@ def transform():
         weather = json.load(f).get("hourly", {})
     with open("data/raw_crypto.json", "r", encoding="utf-8") as f:
         crypto = json.load(f)[0]
+
+    # вычисляем температуру последнего часа
+    temps = weather.get("temperature_2m", [])
+    temp_snapshot = temps[-1] if temps else None
+
+    # отметка времени запуска ETL
+    etl_time = datetime.now(timezone.utc).isoformat()
+
+    # извлекаем поля с товаров
+    records = []
+    for p in products:
+        prod_id = p.get("id")
+        category = p.get("category")
+        price_usd = float(p.get("price", 0))
+        sales = p.get("rating", {}).get("count", 0)  # прокси-продажи
+        if sales <= 0:
+            continue
+
+    # пересчитываем цену в рубли
+    price_rub = round(price_usd * cbr_rate, 2) if cbr_rate else None
