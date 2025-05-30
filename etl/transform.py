@@ -30,5 +30,22 @@ def transform():
         if sales <= 0:
             continue
 
-    # пересчитываем цену в рубли
-    price_rub = round(price_usd * cbr_rate, 2) if cbr_rate else None
+        # пересчитываем цену в рубли
+        price_rub = round(price_usd * cbr_rate, 2) if cbr_rate else None
+
+        # добавляем все нужные поля в словарь
+        record = {
+            "product_id":    prod_id,
+            "category":      category,
+            "sales":         sales,
+            "price_usd":     price_usd,
+            "price_rub":     price_rub,
+            "cbr_usd_rub":   cbr_rate,
+            "temp_snapshot": temp_snapshot,
+            "btc_price_usd": crypto.get("current_price"),
+            "btc_change_24h": crypto.get("price_change_percentage_24h"),
+            "etl_time":      etl_time
+        }
+        records.append(record)
+
+    return records
