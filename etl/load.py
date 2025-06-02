@@ -59,3 +59,31 @@ def get_or_create_product(conn, product_id, title, image, category_id):
             (product_id, title, image, category_id),
         )
         return product_id
+
+
+def get_or_create_time(conn, etl_time_str):
+    dt = datetime.fromisoformat(etl_time_str)
+    with conn.cursor() as cur:
+        # существует ли время с таким exact etl_time
+        cur.execute(
+            "SELECT time_id FROM dim_time WHERE etl_time = %s;", (dt,)
+        )
+        row = cur.fetchone()
+        if row:
+            return row[0]
+
+        # если не нашли — готовим все колонки для вставки в dim_time
+        date_ = dt.date()
+        hour_ = dt.hour
+        weekday_ = dt.isoweekday()  # 1–7 (понедельник–воскресенье)
+
+        # вставляем новую запись и возвращаем сгенерированный SERIAL time_id
+        cur.execute(
+            """
+            INSERT INTO dim_time (etl_time, date, hour, weekday)
+            VALUES (%s, %s, %s, %s)
+            RETURNING time_id;
+            """,
+            (dt, date_, hour_, weekday_),
+        )
+        return cur.fetchone()[0]
