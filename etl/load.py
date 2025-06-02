@@ -128,3 +128,24 @@ def get_or_create_currency(conn, currency_code, description=None):
             (currency_code, description),
         )
         return currency_code
+
+
+def get_or_create_crypto_asset(conn, asset_id, symbol, name):
+    with conn.cursor() as cur:
+        # есть ли уже такой asset_id
+        cur.execute(
+            "SELECT asset_id FROM dim_crypto_asset WHERE asset_id = %s;", (
+                asset_id,)
+        )
+        if cur.fetchone():
+            return asset_id
+
+        # если нет — вставляем новую запись с asset_id, symbol и name
+        cur.execute(
+            """
+            INSERT INTO dim_crypto_asset (asset_id, symbol, name)
+            VALUES (%s, %s, %s);
+            """,
+            (asset_id, symbol, name),
+        )
+        return asset_id
