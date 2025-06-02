@@ -110,3 +110,21 @@ def get_or_create_location(conn, location_name, latitude, longitude):
             (location_name, latitude, longitude),
         )
         return cur.fetchone()[0]
+
+
+def get_or_create_currency(conn, currency_code, description=None):
+    with conn.cursor() as cur:
+        # существует ли уже валюта с данным кодом
+        cur.execute(
+            "SELECT currency_code FROM dim_currency WHERE currency_code = %s;", (
+                currency_code,)
+        )
+        if cur.fetchone():
+            return currency_code
+
+        # если нет — вставляем
+        cur.execute(
+            "INSERT INTO dim_currency (currency_code, description) VALUES (%s, %s);",
+            (currency_code, description),
+        )
+        return currency_code
