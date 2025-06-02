@@ -25,6 +25,8 @@ def transform():
     records = []
     for p in products:
         prod_id = p.get("id")
+        title = p.get("title")
+        image = p.get("image")
         category = p.get("category")
         price_usd = float(p.get("price", 0))
         sales = p.get("rating", {}).get("count", 0)  # прокси-продажи
@@ -37,6 +39,8 @@ def transform():
         # добавляем все нужные поля в словарь
         record = {
             "product_id":    prod_id,
+            "title":         title,
+            "image":         image,
             "category":      category,
             "sales":         sales,
             "price_usd":     price_usd,

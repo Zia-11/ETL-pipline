@@ -1,7 +1,7 @@
 -- размерности
 
 CREATE TABLE IF NOT EXISTS dim_category (
-  category_id   INTEGER PRIMARY KEY,
+  category_id   SERIAL PRIMARY KEY,
   category_name TEXT    NOT NULL
 );
 
