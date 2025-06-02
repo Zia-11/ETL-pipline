@@ -87,3 +87,26 @@ def get_or_create_time(conn, etl_time_str):
             (dt, date_, hour_, weekday_),
         )
         return cur.fetchone()[0]
+
+
+def get_or_create_location(conn, location_name, latitude, longitude):
+    with conn.cursor() as cur:
+        # есть ли локация с данным именем
+        cur.execute(
+            "SELECT location_id FROM dim_location WHERE location_name = %s;", (
+                location_name,)
+        )
+        row = cur.fetchone()
+        if row:
+            return row[0]
+
+        # если не нашли – вставляем новую запись с названием, широтой и долготой
+        cur.execute(
+            """
+            INSERT INTO dim_location (location_name, latitude, longitude)
+            VALUES (%s, %s, %s)
+            RETURNING location_id;
+            """,
+            (location_name, latitude, longitude),
+        )
+        return cur.fetchone()[0]
