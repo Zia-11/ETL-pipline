@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 
 def transform():
@@ -18,7 +18,8 @@ def transform():
     temp_snapshot = temps[-1] if temps else None
 
     # отметка времени запуска ETL
-    etl_time = datetime.now(timezone.utc).isoformat()
+    tz_vl = timezone(timedelta(hours=10))
+    etl_time = datetime.now(tz_vl).strftime("%Y-%m-%d %H:%M:%S")
 
     # извлекаем поля с товаров
     records = []
