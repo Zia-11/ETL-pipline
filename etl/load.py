@@ -37,3 +37,25 @@ def get_or_create_category(conn, category_name):
             (category_name,),
         )
         return cur.fetchone()[0]
+
+
+def get_or_create_product(conn, product_id, title, image, category_id):
+    with conn.cursor() as cur:
+        # проверка существует ли уже товар с таким product_id
+        cur.execute(
+            "SELECT product_id FROM dim_product WHERE product_id = %s;", (
+                product_id,)
+        )
+        if cur.fetchone():
+            # если есть — ничего не делаем, возвращаем product_id
+            return product_id
+
+        # иначе — вставляем новую запись в dim_product
+        cur.execute(
+            """
+            INSERT INTO dim_product (product_id, title, image, category_id)
+            VALUES (%s, %s, %s, %s);
+            """,
+            (product_id, title, image, category_id),
+        )
+        return product_id
