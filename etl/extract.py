@@ -8,8 +8,6 @@ from typing import Optional, List, Dict, Any
 
 # КОНСТАНТЫ
 
-DATA_DIR = "data"
-
 URL_PRODUCTS = "https://fakestoreapi.com/products"
 URL_CBR_DAILY = "https://www.cbr-xml-daily.ru/daily_json.js"
 URL_WEATHER = "https://api.open-meteo.com/v1/forecast"
@@ -36,7 +34,7 @@ def fetch_products() -> List[Dict[str, Any]]:
         return []
 
     data = resp.json()
-    out_path = os.path.join(DATA_DIR, "raw_products.json")
+    out_path = os.path.join("raw_products.json")
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     return data
@@ -53,7 +51,7 @@ def fetch_cbr_rate() -> Optional[float]:
         return None
 
     data = resp.json()
-    out_path = os.path.join(DATA_DIR, "raw_cbr.json")
+    out_path = os.path.join("raw_cbr.json")
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
@@ -95,7 +93,7 @@ def fetch_weather() -> Optional[float]:
 
     data = resp.json()
 
-    out_path = os.path.join(DATA_DIR, "raw_weather.json")
+    out_path = os.path.join("raw_weather.json")
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
@@ -127,7 +125,7 @@ def fetch_btc() -> Optional[Dict[str, float]]:
 
     data = resp.json()
 
-    out_path = os.path.join(DATA_DIR, "raw_crypto.json")
+    out_path = os.path.join("raw_crypto.json")
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
