@@ -1,303 +1,315 @@
+# load.py
+
 import os
 from dotenv import load_dotenv
 import psycopg2
 from transform import transform
 from datetime import datetime
+from typing import Optional, Tuple
+
+
+# КОНСТАНТЫ
 
 # загружаем переменные из .env
 load_dotenv()
 
+
 # читаем переменные окружения
-DB_PARAMS = {
-    "host":     os.getenv("PGHOST", "localhost"),
-    "port":     os.getenv("PGPORT", "5432"),
-    "dbname":   os.getenv("PGDATABASE", "mydb"),
-    "user":     os.getenv("PGUSER", "myuser"),
-    "password": os.getenv("PGPASSWORD", "mypassword"),
-}
+def get_db_params() -> dict:
+    params = {
+        "host":     os.getenv("PGHOST"),
+        "port":     os.getenv("PGPORT"),
+        "dbname":   os.getenv("PGDATABASE"),
+        "user":     os.getenv("PGUSER"),
+        "password": os.getenv("PGPASSWORD"),
+    }
+    missing = [k for k, v in params.items() if v is None]
+    if missing:
+        print(
+            f"[load] предупреждение: не найдены переменные окружения: {', '.join(missing)}")
+    # возвращаем со стандартными значениями если что-то не задано
+    return {
+        "host":     params["host"] or "localhost",
+        "port":     params["port"] or "5432",
+        "dbname":   params["dbname"] or "mydb",
+        "user":     params["user"] or "myuser",
+        "password": params["password"] or "mypassword",
+    }
 
 
-def get_or_create_category(conn, category_name):
+DB_PARAMS = get_db_params()
+
+LOCATION_NAME = "Vladivostok"
+LATITUDE = 43.1155
+LONGITUDE = 131.8855
+
+CURRENCY_CODE = "USD"
+CURRENCY_DESC = "US Dollar"
+
+ASSET_ID = "bitcoin"
+ASSET_SYMBOL = "btc"
+ASSET_NAME = "Bitcoin"
+
+
+# ФУНКЦИИ
+
+def upsert_dimension(conn, select_sql: str, insert_sql: str, sel_params: tuple, ins_params: tuple) -> Optional[int]:
+    # универсальная функция: если select_sql возвращает row - берёт row[0]
+    # иначе выполняет insert_sql и возвращает сгенерированный id (row[0])
     with conn.cursor() as cur:
-        # сначала пытаемся найти существующую запись в таблице dim_category по имени категории
-        cur.execute(
-            "SELECT category_id FROM dim_category WHERE category_name = %s;",
-            (category_name,),
-        )
-        row = cur.fetchone()
-        if row:
-            # если нашли (row не None), возвращаем уже существующий category_id
-            return row[0]
-
-        # если не нашли, вставляем новую строку (INSERT) и сразу возвращаем сгенерированный category_id
-        cur.execute(
-            "INSERT INTO dim_category (category_name) VALUES (%s) RETURNING category_id;",
-            (category_name,),
-        )
-        return cur.fetchone()[0]
-
-
-def get_or_create_product(conn, product_id, title, image, category_id):
-    with conn.cursor() as cur:
-        # проверка существует ли уже товар с таким product_id
-        cur.execute(
-            "SELECT product_id FROM dim_product WHERE product_id = %s;", (
-                product_id,)
-        )
-        if cur.fetchone():
-            # если есть — ничего не делаем, возвращаем product_id
-            return product_id
-
-        # иначе — вставляем новую запись в dim_product
-        cur.execute(
-            """
-            INSERT INTO dim_product (product_id, title, image, category_id)
-            VALUES (%s, %s, %s, %s);
-            """,
-            (product_id, title, image, category_id),
-        )
-        return product_id
-
-
-def get_or_create_time(conn, etl_time_str):
-    dt = datetime.fromisoformat(etl_time_str)
-    with conn.cursor() as cur:
-        # существует ли время с таким exact etl_time
-        cur.execute(
-            "SELECT time_id FROM dim_time WHERE etl_time = %s;", (dt,)
-        )
+        cur.execute(select_sql, sel_params)
         row = cur.fetchone()
         if row:
             return row[0]
-
-        # если не нашли — готовим все колонки для вставки в dim_time
-        date_ = dt.date()
-        hour_ = dt.hour
-        weekday_ = dt.isoweekday()  # 1–7 (понедельник–воскресенье)
-
-        # вставляем новую запись и возвращаем сгенерированный SERIAL time_id
-        cur.execute(
-            """
-            INSERT INTO dim_time (etl_time, date, hour, weekday)
-            VALUES (%s, %s, %s, %s)
-            RETURNING time_id;
-            """,
-            (dt, date_, hour_, weekday_),
-        )
+        cur.execute(insert_sql, ins_params)
         return cur.fetchone()[0]
 
 
-def get_or_create_location(conn, location_name, latitude, longitude):
+def insert_fact_if_not_exists(conn, select_sql: str, insert_sql: str, sel_params: tuple, ins_params: tuple) -> None:
+    # если select_sql не находит строку - выполняем insert_sql с ins_params
     with conn.cursor() as cur:
-        # есть ли локация с данным именем
-        cur.execute(
-            "SELECT location_id FROM dim_location WHERE location_name = %s;", (
-                location_name,)
-        )
-        row = cur.fetchone()
-        if row:
-            return row[0]
-
-        # если не нашли – вставляем новую запись с названием, широтой и долготой
-        cur.execute(
-            """
-            INSERT INTO dim_location (location_name, latitude, longitude)
-            VALUES (%s, %s, %s)
-            RETURNING location_id;
-            """,
-            (location_name, latitude, longitude),
-        )
-        return cur.fetchone()[0]
+        cur.execute(select_sql, sel_params)
+        if cur.fetchone() is None:
+            cur.execute(insert_sql, ins_params)
 
 
-def get_or_create_currency(conn, currency_code, description=None):
-    with conn.cursor() as cur:
-        # существует ли уже валюта с данным кодом
-        cur.execute(
-            "SELECT currency_code FROM dim_currency WHERE currency_code = %s;", (
-                currency_code,)
-        )
-        if cur.fetchone():
-            return currency_code
-
-        # если нет — вставляем
-        cur.execute(
-            "INSERT INTO dim_currency (currency_code, description) VALUES (%s, %s);",
-            (currency_code, description),
-        )
-        return currency_code
+def get_or_create_category(conn, category_name: str) -> Optional[int]:
+    # получает category_id из dim_category по имени или создаёт новую запись
+    select_sql = "SELECT category_id FROM dim_category WHERE category_name = %s;"
+    insert_sql = "INSERT INTO dim_category (category_name) VALUES (%s) RETURNING category_id;"
+    try:
+        return upsert_dimension(conn, select_sql, insert_sql, (category_name,), (category_name,))
+    except Exception as e:
+        print(f"[get_or_create_category] ошибка: {e}")
+        return None
 
 
-def get_or_create_crypto_asset(conn, asset_id, symbol, name):
-    with conn.cursor() as cur:
-        # есть ли уже такой asset_id
-        cur.execute(
-            "SELECT asset_id FROM dim_crypto_asset WHERE asset_id = %s;", (
-                asset_id,)
-        )
-        if cur.fetchone():
-            return asset_id
+def get_or_create_product(conn, product_id: int, title: str, image: str, category_id: int) -> Optional[int]:
+    # получает или создаёт запись в dim_product / возвращает product_id или None при ошибке.
+    select_sql = "SELECT product_id FROM dim_product WHERE product_id = %s;"
+    insert_sql = """
+        INSERT INTO dim_product (product_id, title, image, category_id)
+        VALUES (%s, %s, %s, %s);
+    """
+    try:
+        return upsert_dimension(conn, select_sql, insert_sql, (product_id,), (product_id, title, image, category_id))
+    except Exception as e:
+        print(f"[get_or_create_product] ошибка: {e}")
+        return None
 
-        # если нет — вставляем новую запись с asset_id, symbol и name
-        cur.execute(
-            """
-            INSERT INTO dim_crypto_asset (asset_id, symbol, name)
-            VALUES (%s, %s, %s);
-            """,
-            (asset_id, symbol, name),
-        )
-        return asset_id
+
+def get_or_create_time(conn, etl_time_str: str) -> Optional[int]:
+    # получает или создаёт запись в dim_time
+    # ожидается формат 'YYYY-MM-DD HH:MM:SS'
+    try:
+        dt = datetime.fromisoformat(etl_time_str)
+    except ValueError:
+        print(f"[get_or_create_time] неверный формат etl_time: {etl_time_str}")
+        return None
+
+    select_sql = "SELECT time_id FROM dim_time WHERE etl_time = %s;"
+    insert_sql = """
+        INSERT INTO dim_time (etl_time, date, hour, weekday)
+        VALUES (%s, %s, %s, %s)
+        RETURNING time_id;
+    """
+    date_ = dt.date()
+    hour_ = dt.hour
+    weekday_ = dt.isoweekday()
+
+    try:
+        return upsert_dimension(conn, select_sql, insert_sql, (dt,), (dt, date_, hour_, weekday_))
+    except Exception as e:
+        print(f"[get_or_create_time] ошибка: {e}")
+        return None
+
+
+def get_or_create_location(conn, location_name: str, latitude: float, longitude: float) -> Optional[int]:
+    # получает или создаёт запись в dim_location
+    select_sql = "SELECT location_id FROM dim_location WHERE location_name = %s;"
+    insert_sql = """
+        INSERT INTO dim_location (location_name, latitude, longitude)
+        VALUES (%s, %s, %s)
+        RETURNING location_id;
+    """
+    try:
+        return upsert_dimension(conn, select_sql, insert_sql,
+                                (location_name,), (location_name, latitude, longitude))
+    except Exception as e:
+        print(f"[get_or_create_location] ошибка: {e}")
+        return None
+
+
+def get_or_create_currency(conn, currency_code: str, description: Optional[str] = None) -> Optional[str]:
+    # получает или создаёт валюту в dim_currency
+    select_sql = "SELECT currency_code FROM dim_currency WHERE currency_code = %s;"
+    insert_sql = "INSERT INTO dim_currency (currency_code, description) VALUES (%s, %s);"
+    try:
+        existing = upsert_dimension(
+            conn, select_sql, insert_sql, (currency_code,), (currency_code, description))
+        return existing if existing else currency_code
+    except Exception as e:
+        print(f"[get_or_create_currency] ошибка: {e}")
+        return None
+
+
+def get_or_create_crypto_asset(conn, asset_id: str, symbol: str, name: str) -> Optional[str]:
+    # получает или создаёт запись в dim_crypto_asset
+    select_sql = "SELECT asset_id FROM dim_crypto_asset WHERE asset_id = %s;"
+    insert_sql = """
+        INSERT INTO dim_crypto_asset (asset_id, symbol, name)
+        VALUES (%s, %s, %s);
+    """
+    try:
+        existing = upsert_dimension(
+            conn, select_sql, insert_sql, (asset_id,), (asset_id, symbol, name))
+        return existing if existing else asset_id
+    except Exception as e:
+        print(f"[get_or_create_crypto_asset] ошибка: {e}")
+        return None
 
 
 def load():
-    # получаем уже преобразованные записи из transform()
+    # основной процесс загрузки: берём преобразованные записи из transform()
+    # затем апсетим размерности и вставляем факты в соответствующие таблицы
     records = transform()
     if not records:
-        print("Нет записей для загрузки.")
+        print("[load] нет записей для загрузки, выходим.")
         return
 
-    # извлекаем «единые» данные из первого элемента списка records
+    # берём первичный элемент чтобы получить общие параметры для всех записей
     first = records[0]
-    etl_time_str = first["etl_time"]      # строка вида "YYYY-MM-DD HH:MM:SS"
-    cbr_rate = first["cbr_usd_rub"]   # курс USD - RUB
-    temp_snapshot = first["temp_snapshot"]  # температура последнего часа
-    btc_price = first["btc_price_usd"]  # текущая цена BTC в USD
-    btc_change = first["btc_change_24h"]  # изменение BTC за 24ч в процентах
+    etl_time_str = first.get("etl_time")
+    cbr_rate = first.get("cbr_usd_rub")
+    temp_snapshot = first.get("temp_snapshot")
+    btc_price = first.get("btc_price_usd")
+    btc_change = first.get("btc_change_24h")
 
-    # статические «размеры» (они одни и те же для всех записей)
-    LOCATION_NAME = "Vladivostok"
-    LATITUDE = 43.1155
-    LONGITUDE = 131.8855
+    if not etl_time_str:
+        print("[load] etl_time отсутствует в записи, выходим.")
+        return
 
-    CURRENCY_CODE = "USD"
-    CURRENCY_DESC = "US Dollar"
-
-    ASSET_ID = "bitcoin"
-    ASSET_SYMBOL = "btc"
-    ASSET_NAME = "Bitcoin"
-
-    # открываем соединение с базой, используя DB_PARAMS
-    conn = psycopg2.connect(**DB_PARAMS)
+    # открываем соединение с базой
     try:
-        conn.autocommit = False  # начинаем транзакцию
+        with psycopg2.connect(**DB_PARAMS) as conn:
+            conn.autocommit = False  # начинаем транзакцию
 
-        # Upsert в dim_time: получаем или создаём запись для текущего etl_time
-        time_id = get_or_create_time(conn, etl_time_str)
+            # проверяем соединение
+            with conn.cursor() as test_cur:
+                test_cur.execute("SELECT 1;")
 
-        # Upsert в dim_location: получаем или создаём запись для "Vladivostok"
-        location_id = get_or_create_location(
-            conn, LOCATION_NAME, LATITUDE, LONGITUDE)
+            # dim_time
+            time_id = get_or_create_time(conn, etl_time_str)
+            if time_id is None:
+                print("[load] не удалось получить time_id, откатываемся.")
+                conn.rollback()
+                return
 
-        # Upsert в dim_currency: получаем или создаём запись для USD
-        get_or_create_currency(conn, CURRENCY_CODE, CURRENCY_DESC)
+            # dim_location
+            location_id = get_or_create_location(
+                conn, LOCATION_NAME, LATITUDE, LONGITUDE)
+            if location_id is None:
+                print("[load] не удалось получить location_id, откатываемся.")
+                conn.rollback()
+                return
 
-        # Upsert в dim_crypto_asset: получаем или создаём запись для Bitcoin
-        get_or_create_crypto_asset(conn, ASSET_ID, ASSET_SYMBOL, ASSET_NAME)
+            # dim_currency
+            curr = get_or_create_currency(conn, CURRENCY_CODE, CURRENCY_DESC)
+            if curr is None:
+                print("[load] не удалось получить currency_code, откатываемся.")
+                conn.rollback()
+                return
 
-        # Вставляем факт погоды (fact_weather) — только если ещё нет записи для этой time_id и location_id
-        with conn.cursor() as cur:
-            cur.execute(
+            # dim_crypto_asset
+            asset = get_or_create_crypto_asset(
+                conn, ASSET_ID, ASSET_SYMBOL, ASSET_NAME)
+            if asset is None:
+                print("[load] не удалось получить asset_id, откатываемся.")
+                conn.rollback()
+                return
+
+            # факты погоды
+            select_weather = "SELECT fact_id FROM fact_weather WHERE time_id = %s AND location_id = %s;"
+            insert_weather = """
+                INSERT INTO fact_weather (time_id, location_id, temperature)
+                VALUES (%s, %s, %s);
+            """
+            insert_fact_if_not_exists(conn,
+                                      select_weather, insert_weather,
+                                      (time_id, location_id), (time_id,
+                                                               location_id, temp_snapshot)
+                                      )
+
+            # факты курса валют
+            select_currency = "SELECT fact_id FROM fact_currency WHERE time_id = %s AND currency_code = %s;"
+            insert_currency = """
+                INSERT INTO fact_currency (time_id, currency_code, rate_cbr)
+                VALUES (%s, %s, %s);
+            """
+            insert_fact_if_not_exists(conn,
+                                      select_currency, insert_currency,
+                                      (time_id, CURRENCY_CODE), (time_id,
+                                                                 CURRENCY_CODE, cbr_rate)
+                                      )
+
+            # факты цены крипто
+            select_crypto = "SELECT fact_id FROM fact_crypto_price WHERE time_id = %s AND asset_id = %s;"
+            insert_crypto = """
+                INSERT INTO fact_crypto_price (time_id, asset_id, price_usd, change_pct_24h)
+                VALUES (%s, %s, %s, %s);
+            """
+            insert_fact_if_not_exists(conn,
+                                      select_crypto, insert_crypto,
+                                      (time_id, ASSET_ID), (time_id,
+                                                            ASSET_ID, btc_price, btc_change)
+                                      )
+
+            # факты продаж (прогон по всем товарам)
+            for rec in records:
+                prod_id = rec.get("product_id")
+                category = rec.get("category")
+                price_usd = rec.get("price_usd")
+                price_rub = rec.get("price_rub")
+                sales = rec.get("sales")
+                title = rec.get("title")
+                image = rec.get("image")
+
+                # dim_category
+                category_id = get_or_create_category(conn, category)
+                if category_id is None:
+                    print(
+                        f"[load] не удалось получить category_id для '{category}', пропускаем запись.")
+                    continue
+
+                # dim_product
+                prod = get_or_create_product(
+                    conn, prod_id, title, image, category_id)
+                if prod is None:
+                    print(
+                        f"[load] не удалось получить product_id={prod_id}, пропускаем запись.")
+                    continue
+
+                # вставляем факт продаж
+                select_sales = "SELECT fact_id FROM fact_sales WHERE product_id = %s AND time_id = %s;"
+                insert_sales = """
+                    INSERT INTO fact_sales (product_id, time_id, sales, price_usd, price_rub)
+                    VALUES (%s, %s, %s, %s, %s);
                 """
-                SELECT fact_id
-                FROM fact_weather
-                WHERE time_id = %s AND location_id = %s;
-                """,
-                (time_id, location_id),
-            )
-            if cur.fetchone() is None:
-                # если записи нет, вставляем
-                cur.execute(
-                    """
-                    INSERT INTO fact_weather (time_id, location_id, temperature)
-                    VALUES (%s, %s, %s);
-                    """,
-                    (time_id, location_id, temp_snapshot),
-                )
+                insert_fact_if_not_exists(conn,
+                                          select_sales, insert_sales,
+                                          (prod_id, time_id), (prod_id,
+                                                               time_id, sales, price_usd, price_rub)
+                                          )
 
-        # вставляем факт курса валют (fact_currency) — если ещё нет записи для этой time_id и USD
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT fact_id
-                FROM fact_currency
-                WHERE time_id = %s AND currency_code = %s;
-                """,
-                (time_id, CURRENCY_CODE),
-            )
-            if cur.fetchone() is None:
-                cur.execute(
-                    """
-                    INSERT INTO fact_currency (time_id, currency_code, rate_cbr)
-                    VALUES (%s, %s, %s);
-                    """,
-                    (time_id, CURRENCY_CODE, cbr_rate),
-                )
-
-        # вставляем факт цены крипто (fact_crypto_price) — если ещё нет для этой time_id и asset_id
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT fact_id
-                FROM fact_crypto_price
-                WHERE time_id = %s AND asset_id = %s;
-                """,
-                (time_id, ASSET_ID),
-            )
-            if cur.fetchone() is None:
-                cur.execute(
-                    """
-                    INSERT INTO fact_crypto_price (time_id, asset_id, price_usd, change_pct_24h)
-                    VALUES (%s, %s, %s, %s);
-                    """,
-                    (time_id, ASSET_ID, btc_price, btc_change),
-                )
-
-        # цикл по каждому record (каждому товару) для загрузки данных продаж
-        for rec in records:
-            prod_id = rec["product_id"]    # ID товара из API
-            category = rec["category"]      # Название категории
-            price_usd = rec["price_usd"]    # Цена USD
-            price_rub = rec["price_rub"]    # Цена RUB (рассчитанная)
-            sales = rec["sales"]         # Количество продаж (proxy)
-            title = rec.get("title")     # Название товара
-            image = rec.get("image")     # URL картинки товара
-
-            # получаем или создаём категорию
-            category_id = get_or_create_category(conn, category)
-
-            # получаем или создаём товар с его title/image и category_id
-            get_or_create_product(conn, prod_id, title, image, category_id)
-
-            # вставляем факт продаж (если ещё нет) для данного product_id и time_id
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT fact_id
-                    FROM fact_sales
-                    WHERE product_id = %s AND time_id = %s;
-                    """,
-                    (prod_id, time_id),
-                )
-                if cur.fetchone() is None:
-                    cur.execute(
-                        """
-                        INSERT INTO fact_sales (product_id, time_id, sales, price_usd, price_rub)
-                        VALUES (%s, %s, %s, %s, %s);
-                        """,
-                        (prod_id, time_id, sales, price_usd, price_rub),
-                    )
-
-        # если всё прошло без ошибок, фиксируем транзакцию
-        conn.commit()
-        print("Загрузка в БД прошла успешно.")
+            # фиксируем транзакцию
+            conn.commit()
+            print("[load] загрузка в БД прошла успешно.")
+    except psycopg2.OperationalError as e:
+        print(f"[load] ошибка соединения с БД: {e}")
     except Exception as e:
-        # при любой ошибке делаем откат и печатаем сообщение
-        conn.rollback()
-        print("Ошибка при загрузке:", e)
+        # при любой другой ошибке транзакция откатится
+        print(f"[load] непредвиденная ошибка: {e}")
         raise
-    finally:
-        # закрываем соединение в любом случае
-        conn.close()
 
 
 if __name__ == "__main__":
