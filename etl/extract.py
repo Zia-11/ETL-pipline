@@ -5,6 +5,16 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from typing import Optional, List, Dict, Any
 
+# определяем путь до папки data относительно этого файла
+BASE_DIR = os.path.dirname(os.path.abspath(
+    __file__))        # .../ETL_PIPELINE/etl
+# .../ETL_PIPELINE
+PROJECT_DIR = os.path.dirname(BASE_DIR)
+# .../ETL_PIPELINE/data
+DATA_DIR = os.path.join(PROJECT_DIR, "data")
+
+# создаём папку data, если её нет
+os.makedirs(DATA_DIR, exist_ok=True)
 
 # КОНСТАНТЫ
 
@@ -24,8 +34,8 @@ REQUEST_TIMEOUT = 5
 # ФУНКЦИИ
 
 def fetch_products() -> List[Dict[str, Any]]:
-    # загружает список товаров с fakestoreapi и сохраняет json в raw_products
-    # возвращает список товарных словарей или пустой список если ошибка
+    # загружает список товаров с fakestoreapi и сохраняет json в папку data
+    # возвращает список товаров или пустой список если ошибка
     try:
         resp = requests.get(URL_PRODUCTS, timeout=REQUEST_TIMEOUT)
         resp.raise_for_status()
@@ -34,15 +44,15 @@ def fetch_products() -> List[Dict[str, Any]]:
         return []
 
     data = resp.json()
-    out_path = os.path.join("raw_products.json")
+    out_path = os.path.join(DATA_DIR, "raw_products.json")
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     return data
 
 
 def fetch_cbr_rate() -> Optional[float]:
-    # загружает json курсов валют и сохраняет в raw_cbr
-    # возвращает курс доллара  или none если что то не так
+    # загружает json курсов валют и сохраняет в папку data
+    # возвращает курс доллара или none если что-то не так
     try:
         resp = requests.get(URL_CBR_DAILY, timeout=REQUEST_TIMEOUT)
         resp.raise_for_status()
@@ -51,7 +61,7 @@ def fetch_cbr_rate() -> Optional[float]:
         return None
 
     data = resp.json()
-    out_path = os.path.join("raw_cbr.json")
+    out_path = os.path.join(DATA_DIR, "raw_cbr.json")
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
@@ -63,7 +73,7 @@ def fetch_cbr_rate() -> Optional[float]:
 
 
 def fetch_weather() -> Optional[float]:
-    # запрашивает погоду (температуру по часам) для Владивостока на сегодня и сохраняет в raw_weather
+    # запрашивает погоду (температуру по часам) для Владивостока на сегодня и сохраняет в папку data
     # возвращает температуру за последний час или None.
     try:
         now_vl = datetime.now(ZoneInfo(WEATHER_TIMEZONE))
@@ -92,8 +102,7 @@ def fetch_weather() -> Optional[float]:
         return None
 
     data = resp.json()
-
-    out_path = os.path.join("raw_weather.json")
+    out_path = os.path.join(DATA_DIR, "raw_weather.json")
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
@@ -107,7 +116,7 @@ def fetch_weather() -> Optional[float]:
 
 
 def fetch_btc() -> Optional[Dict[str, float]]:
-    # загружает данные о биткоине (цена и изменение за 24h) и сохраняет в raw_crypto
+    # загружает данные о биткоине (цена и изменение за 24h) и сохраняет в папку data
     # возвращает словарь или none при ошибке
     params = {
         "vs_currency": "usd",
@@ -124,8 +133,7 @@ def fetch_btc() -> Optional[Dict[str, float]]:
         return None
 
     data = resp.json()
-
-    out_path = os.path.join("raw_crypto.json")
+    out_path = os.path.join(DATA_DIR, "raw_crypto.json")
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
@@ -143,7 +151,6 @@ def fetch_btc() -> Optional[Dict[str, float]]:
 # ГЛАВНЫЙ БЛОК
 
 if __name__ == "__main__":
-
     prods = fetch_products()
     print("Продуктов:", len(prods) if prods is not None else "Ошибка")
 

@@ -5,13 +5,18 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from typing import Optional, List, Dict, Any
 
+# вычисляем пути к файлам относительно корня проекта
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_DIR = os.path.dirname(BASE_DIR)
+DATA_DIR = os.path.join(PROJECT_DIR, "data")
+
 # КОНСТАНТЫ
 
-RAW_PRODUCTS = os.path.join("data/raw_products.json")
-RAW_CBR = os.path.join("data/raw_cbr.json")
-RAW_WEATHER = os.path.join("data/raw_weather.json")
-RAW_CRYPTO = os.path.join("data/raw_crypto.json")
-SALES_HISTORY = os.path.join("data/sales_history.json")
+RAW_PRODUCTS = os.path.join(DATA_DIR, "raw_products.json")
+RAW_CBR = os.path.join(DATA_DIR, "raw_cbr.json")
+RAW_WEATHER = os.path.join(DATA_DIR, "raw_weather.json")
+RAW_CRYPTO = os.path.join(DATA_DIR, "raw_crypto.json")
+SALES_HISTORY = os.path.join(DATA_DIR, "sales_history.json")
 
 
 # ФУНКЦИИ

@@ -7,11 +7,12 @@ from transform import transform
 from datetime import datetime
 from typing import Optional, Tuple
 
+# вычисляем корень проекта, чтобы .env точно находился
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# КОНСТАНТЫ
-
-# загружаем переменные из .env
-load_dotenv()
+# загружаем переменные из .env, явно указав путь к файлу
+dotenv_path = os.path.join(BASE_DIR, ".env")
+load_dotenv(dotenv_path)
 
 
 # читаем переменные окружения
